@@ -100,15 +100,19 @@ class Itau:
         )
         logger.debug("===== CC MINHA FATURA RESP:\n%s" % res.text)
 
-        if not card_name:
-            card_id = cards[0]["id"]
-        else:
-            card_id = next(c for c in cards if c["nome"] == card_name)["id"]
+        response = []
+        for card in cards:
+            card_id = card["id"]
 
-        response = self._session.post(
-            ROUTER_URL, headers={"op": card_details.full_statement_op}, data=card_id
-        )
-        return response.json()
+            res = self._session.post(
+                ROUTER_URL, headers={"op": card_details.full_statement_op},
+                data=card_id
+            )
+            logger.debug("===== CC PAGINATE RESP:\n%s" % res.text)
+
+            response.append(res.json())
+
+        return response
 
     def get_statements(self, days=90):
         """
