@@ -2,6 +2,8 @@ import re
 
 from bs4 import BeautifulSoup
 
+# import logging
+# logger = logging.getLogger('pyitau.pages')
 
 class TextPage:
     def __init__(self, response_text):
@@ -15,6 +17,34 @@ class SoupPage(TextPage):
     def __init__(self, response_text):
         super().__init__(response_text)
         self._soup = BeautifulSoup(self._text, features="html.parser")
+
+
+class AwsWafRouter(TextPage):
+    """
+    """
+    @property
+    def key(self):
+        """
+        """
+        return re.search(r"\"key\"\:\"(.*?)\"", self._text).group(1)
+
+    @property
+    def iv(self):
+        """
+        """
+        return re.search(r"\"iv\"\:\"(.*?)\"", self._text).group(1)
+
+    @property
+    def context(self):
+        """
+        """
+        return re.search(r"\"context\"\:\"(.*?)\"", self._text).group(1)
+
+    @property
+    def challenge(self):
+        """
+        """
+        return re.search(r"\<script src=\"(.*.js)\"\>", self._text).group(1)
 
 
 class FirstRouter(TextPage):
@@ -48,8 +78,7 @@ class FirstRouter(TextPage):
     @property
     def secbcatch(self):
         return re.search(
-            r"\$SECBCATCH[\n\r\t\s]*.uidap\(\'(.*)\'\);", self._text
-        ).group(1)
+            r"\$SECBCATCH[\n\r\t\s]*.uidap\(\'(.*)\'\);", self._text).group(1)
 
     @property
     def perform_request(self):
@@ -237,15 +266,29 @@ class Cards(SoupPage):
 
 
 class CheckingAccountFullStatement(TextPage):
-    _url_pattern = r'url\s*=\s*"([^"]*)";'
-
     @property
     def filter_statements_by_period_op(self):
-        return re.findall(self._url_pattern, self._text, flags=re.DOTALL)[2]
+        pattern = (
+            r"function consultarLancamentosPorPeriodo.*"
+            r'"periodoConsulta"\s?:\s?parametrosPeriodo.*?'
+            r'url = "(.*?)";'
+        )
+        # print("========= TextPage ===========")
+        # print(TextPage)
+        # print("========= self text ===========")
+        # print(self._text)
+        # print("========= re.search ===========")
+        # print(re.search(pattern, self._text, flags=re.DOTALL))
+        return re.search(pattern, self._text, flags=re.DOTALL).group(1)
 
     @property
     def filter_statements_by_month_op(self):
-        return re.findall(self._url_pattern, self._text, flags=re.DOTALL)[1]
+        pattern = (
+            r"function consultarLancamentosPorPeriodo.*"
+            r'"mesCompleto" : parametrosPeriodo.*?'
+            r'url = "(.*?)";'
+        )
+        return re.search(pattern, self._text, flags=re.DOTALL).group(1)
 
 
 class CardDetails(TextPage):

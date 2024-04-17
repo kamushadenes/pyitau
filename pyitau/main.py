@@ -1,19 +1,47 @@
 import requests
+import json
 from cached_property import cached_property
 
 from pyitau import pages
 
+import capsolver
+
+import logging
+from http.client import HTTPConnection
+HTTPConnection.debuglevel = 1
+logger = logging.getLogger('pyitau.main')
+
 ROUTER_URL = "https://internetpf5.itau.com.br/router-app/router"
 
+def solve_captcha(websiteURL, awsKey, awsIv, awsContext, awsChallengeJS, awsProxy = None):
+        capsolver.api_key = "CAP-xxxxxxxxxxxxx"
+        q = {}
+        q["websiteURL"] = websiteURL
+        q["awsKey"] = awsKey
+        q["awsIv"] = awsIv
+        q["awsContext"] = awsContext
+        q["awsChallengeJS"] = awsChallengeJS
+        q["type"] = "AntiAwsWafTaskProxyless"
+
+        if awsProxy and awsProxy["http"]:
+            q["type"] = "AntiAwsWafTask"
+            q["proxy"] = awsProxy["http"]
+
+        logger.debug("==== TRYING TO SOLVE 1: ====\n%s" % q)
+        solution = capsolver.solve(q)
+        logger.debug("==== CAPTCHA SOLUTION:\n%s" % solution)
+
+        return solution["cookie"]
 
 class Itau:
-    def __init__(self, agency, account, account_digit, password, holder_name=None):
+    def __init__(self, agency, account, account_digit, password, holder_name=None, proxy=None):
         self.agency = agency
         self.account = account
         self.account_digit = account_digit
         self.password = password
         self.holder_name = holder_name
         self._session = requests.Session()
+        self._session.proxies = proxy
         self._session.headers = {
             **self._session.headers,
             "User-Agent": (
@@ -46,6 +74,7 @@ class Itau:
                 "X-Requested-With": "XMLHttpRequest",
             },
         )
+        logger.debug("===== CC INVOICE RESP:\n%s" % response.text)
         card_details = pages.CardDetails(response.text)
 
         response = self._session.post(
@@ -53,13 +82,15 @@ class Itau:
             headers={"op": card_details.invoice_op},
             data={"secao": "Cartoes", "item": "Home"},
         )
+        logger.debug("===== CC CARD DETAILS RESP:\n%s" % response.text)
         cards = response.json()["object"]["data"]
 
-        self._session.post(
+        res = self._session.post(
             ROUTER_URL,
             headers={"op": card_details.invoice_op},
             data={"secao": "Cartoes:MinhaFatura", "item": ""},
         )
+        logger.debug("===== CC MINHA FATURA RESP:\n%s" % res.text)
 
         if not card_name:
             card_id = cards[0]["id"]
@@ -116,16 +147,26 @@ class Itau:
                 "destino": "",
             },
         )
-        page = pages.FirstRouter(response.text)
-        self._session.cookies.set("X-AUTH-TOKEN", page.auth_token)
-        self._op2 = page.secapdk
-        self._op3 = page.secbcatch
-        self._op4 = page.perform_request
-        self._flow_id = page.flow_id
-        self._client_id = page.client_id
+
+        if "awswaf" in response.text:
+            logger.debug("AWS WAF detected on step '_authenticate2', attempting to solve.")
+            page = pages.AwsWafRouter(response.text)
+            le_cookie = solve_captcha(ROUTER_URL, page.key, page.iv, page.context, page.challenge, self._session.proxies)
+            self._session.cookies.set("aws-waf-token", le_cookie)
+            self._authenticate2()
+
+        else:
+            page = pages.FirstRouter(response.text)
+            asdf = page.auth_token
+            self._session.cookies.set("X-AUTH-TOKEN", asdf)
+            self._op2 = page.secapdk
+            self._op3 = page.secbcatch
+            self._op4 = page.perform_request
+            self._flow_id = page.flow_id
+            self._client_id = page.client_id
 
     def _authenticate3(self):
-        self._session.post(
+        response = self._session.post(
             ROUTER_URL,
             headers={
                 "op": self._op2,
@@ -136,43 +177,97 @@ class Itau:
             },
         )
 
+        if "awswaf" in response.text:
+            logger.debug("AWS WAF detected on step '_authenticate3', attempting to solve.")
+            page = pages.AwsWafRouter(resp_txt)
+            le_cookie = solve_captcha(ROUTER_URL, page.key, page.iv, page.context, page.challenge, self._session.proxies)
+            self._session.cookies.set("aws-waf-token", le_cookie)
+            self._authenticate3()
+
+
     def _authenticate4(self):
-        self._session.post(ROUTER_URL, headers={"op": self._op3})
+        response = self._session.post(ROUTER_URL, headers={"op": self._op3})
+
+        if "awswaf" in response.text:
+            logger.debug("AWS WAF detected on step '_authenticate4', attempting to solve.")
+            page = pages.AwsWafRouter(resp_txt)
+            le_cookie = solve_captcha(ROUTER_URL, page.key, page.iv, page.context, page.challenge, self._session.proxies)
+            self._session.cookies.set("aws-waf-token", le_cookie)
+            self._authenticate4()
 
     def _authenticate5(self):
         response = self._session.post(ROUTER_URL, headers={"op": self._op4})
-        page = pages.SecondRouter(response.text)
-        self._op5 = page.op_sign_command
-        self._op6 = page.op_maquina_pirata
-        self._op7 = page.guardiao_cb
+
+        if "awswaf" in response.text:
+            logger.debug("AWS WAF detected on step '_authenticate5', attempting to solve.")
+            page = pages.AwsWafRouter(resp_txt)
+            le_cookie = solve_captcha(ROUTER_URL, page.key, page.iv, page.context, page.challenge, self._session.proxies)
+            self._session.cookies.set("aws-waf-token", le_cookie)
+            self._authenticate5()
+
+        else:
+            page = pages.SecondRouter(response.text)
+            self._op5 = page.op_sign_command
+            self._op6 = page.op_maquina_pirata
+            self._op7 = page.guardiao_cb
 
     def _authenticate6(self):
-        self._session.post(ROUTER_URL, headers={"op": self._op5})
+        response = self._session.post(ROUTER_URL, headers={"op": self._op5})
+
+        if "awswaf" in response.text:
+            logger.debug("AWS WAF detected on step '_authenticate6', attempting to solve.")
+            page = pages.AwsWafRouter(resp_txt)
+            le_cookie = solve_captcha(ROUTER_URL, page.key, page.iv, page.context, page.challenge, self._session.proxies)
+            self._session.cookies.set("aws-waf-token", le_cookie)
+            self._authenticate6()
 
     def _authenticate7(self):
-        self._session.post(ROUTER_URL, headers={"op": self._op6})
+        response = self._session.post(ROUTER_URL, headers={"op": self._op6})
+
+        if "awswaf" in response.text:
+            logger.debug("AWS WAF detected on step '_authenticate7', attempting to solve.")
+            page = pages.AwsWafRouter(resp_txt)
+            le_cookie = solve_captcha(ROUTER_URL, page.key, page.iv, page.context, page.challenge, self._session.proxies)
+            self._session.cookies.set("aws-waf-token", le_cookie)
+            self._authenticate7()
 
     def _authenticate8(self):
         response = self._session.post(ROUTER_URL, headers={"op": self._op7})
-        page = pages.ThirdRouter(response.text)
 
-        if self.holder_name and page.has_account_holders_form:
-            holder, holder_index = page.find_account_holder(self.holder_name)
-            self._session.post(
-                ROUTER_URL,
-                headers={"op": page.op},
-                data={
-                    "nomeTitular": holder,
-                    "indexTitular": holder_index,
-                },
-            )
-            self._authenticate6()
-            self._authenticate7()
-            response = self._session.post(ROUTER_URL, headers={"op": self._op7})
+        if "awswaf" in response.text:
+            logger.debug("AWS WAF detected on step '_authenticate8', attempting to solve.")
+            page = pages.AwsWafRouter(resp_txt)
+            le_cookie = solve_captcha(ROUTER_URL, page.key, page.iv, page.context, page.challenge, self._session.proxies)
+            self._session.cookies.set("aws-waf-token", le_cookie)
+            self._authenticate8()
 
-        page = pages.Password(response.text)
-        self._letter_password = page.letter_password(self.password)
-        self._op8 = page.op
+        else:
+            page = pages.ThirdRouter(response.text)
+
+            if self.holder_name and page.has_account_holders_form:
+                holder, holder_index = page.find_account_holder(self.holder_name)
+                self._session.post(
+                    ROUTER_URL,
+                    headers={"op": page.op},
+                    data={
+                        "nomeTitular": holder,
+                        "indexTitular": holder_index,
+                    },
+                )
+                self._authenticate6()
+                self._authenticate7()
+                response = self._session.post(ROUTER_URL, headers={"op": self._op7})
+
+                if "awswaf" in response.text:
+                    logger.debug("AWS WAF detected on step '_authenticate8', attempting to solve.")
+                    page = pages.AwsWafRouter(resp_txt)
+                    le_cookie = solve_captcha(ROUTER_URL, page.key, page.iv, page.context, page.challenge, self._session.proxies)
+                    self._session.cookies.set("aws-waf-token", le_cookie)
+                    self._authenticate8()
+
+            page = pages.Password(response.text)
+            self._letter_password = page.letter_password(self.password)
+            self._op8 = page.op
 
     def _authenticate9(self):
         response = self._session.post(
@@ -180,7 +275,16 @@ class Itau:
             headers={"op": self._op8},
             data={"op": self._op8, "senha": self._letter_password},
         )
-        self._home = pages.AuthenticatedHome(response.text)
+
+        if "awswaf" in response.text:
+            logger.debug("AWS WAF detected on step '_authenticate9', attempting to solve.")
+            page = pages.AwsWafRouter(resp_txt)
+            le_cookie = solve_captcha(ROUTER_URL, page.key, page.iv, page.context, page.challenge, self._session.proxies)
+            self._session.cookies.set("aws-waf-token", le_cookie)
+            self._authenticate9()
+
+        else:
+            self._home = pages.AuthenticatedHome(response.text)
 
     @cached_property
     def _menu_page(self):
