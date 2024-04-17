@@ -44,6 +44,14 @@ class Itau:
         self._session.proxies = proxy
         self._session.headers = {
             **self._session.headers,
+            "Accept": (
+                "text/html,application/xhtml+xml,application/xml;q=0.9,"
+                "image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange"
+                ";v=b3;q=0.7"
+            ),
+            "Accept-Language": "pt",
+            "Connection": "keep-alive",
+            "Content-Type": "application/x-www-form-urlencoded",
             "User-Agent": (
                 "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
                 "(KHTML, like Gecko) Ubuntu Chromium/72.0.3626.121 "
@@ -138,7 +146,7 @@ class Itau:
         response = self._session.post(
             ROUTER_URL,
             data={
-                "portal": "005",
+                "portal": "006",
                 "pre-login": "pre-login",
                 "tipoLogon": "7",
                 "usuario.agencia": self.agency,
