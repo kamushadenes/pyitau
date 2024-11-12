@@ -14,7 +14,7 @@ logger = logging.getLogger('pyitau.main')
 ROUTER_URL = "https://internetpf5.itau.com.br/router-app/router"
 
 def solve_captcha(websiteURL, awsKey, awsIv, awsContext, awsChallengeJS, awsProxy = None):
-        capsolver.api_key = "CAP-xxxxxxxxxxxxx"
+        capsolver.api_key = os.environ.get('CAPSOLVER_API_KEY')
         q = {}
         q["websiteURL"] = websiteURL
         q["awsKey"] = awsKey
