@@ -1,3 +1,4 @@
+import os
 import requests
 import json
 from cached_property import cached_property
